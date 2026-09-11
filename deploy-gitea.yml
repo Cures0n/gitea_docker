@@ -1,0 +1,153 @@
+---
+- name: Deploy Gitea with PostgreSQL (rootless) on VM
+  hosts: all
+  become: true
+  vars:
+    gitea_user: "dos-tech"
+    gitea_uid: 7777
+    gitea_gid: 1004
+    gitea_base_dir: "/opt/gitea"
+    docker_images_dir: "/opt/docker-images"
+    gitea_image_tar: "gitea-rootless.tar"
+    postgres_image_tar: "postgres.tar"
+    gitea_image_name: "gitea/gitea:latest-rootless"
+    postgres_image_name: "postgres:15-alpine"
+    
+  tasks:
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+          - uidmap
+          - fuse-overlayfs
+        state: present
+        update_cache: yes
+      tags: [packages]
+
+    - name: Create docker-compose symlink for v2
+      file:
+        src: /usr/libexec/docker/cli-plugins/docker-compose
+        dest: /usr/local/bin/docker-compose
+        state: link
+        force: yes
+      tags: [packages]
+
+    - name: Create Gitea user group if not exists
+      group:
+        name: "{{ gitea_user }}"
+        gid: "{{ gitea_gid }}"
+        state: present
+      tags: [user]
+
+    - name: Create Gitea user if not exists
+      user:
+        name: "{{ gitea_user }}"
+        uid: "{{ gitea_uid }}"
+        group: "{{ gitea_gid }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+      tags: [user]
+
+    - name: Create base directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ gitea_user }}"
+        group: "{{ gitea_user }}"
+        mode: '0755'
+      loop:
+        - "{{ gitea_base_dir }}"
+        - "{{ gitea_base_dir }}/gitea"
+        - "{{ gitea_base_dir }}/postgres"
+        - "{{ gitea_base_dir }}/config"
+        - "{{ docker_images_dir }}"
+      tags: [dirs]
+
+    - name: Copy Docker images (tar archives)
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ docker_images_dir }}/{{ item.dest }}"
+        owner: "{{ gitea_user }}"
+        group: "{{ gitea_user }}"
+        mode: '0644'
+      loop:
+        - { src: "{{ gitea_image_tar }}", dest: "{{ gitea_image_tar }}" }
+        - { src: "{{ postgres_image_tar }}", dest: "{{ postgres_image_tar }}" }
+      tags: [images]
+
+    - name: Load Gitea Docker image from tar
+      command: docker load -i {{ docker_images_dir }}/{{ gitea_image_tar }}
+      tags: [images]
+
+    - name: Load PostgreSQL Docker image from tar
+      command: docker load -i {{ docker_images_dir }}/{{ postgres_image_tar }}
+      tags: [images]
+
+    - name: Configure subuid for rootless Docker
+      lineinfile:
+        path: /etc/subuid
+        line: "{{ gitea_user }}:100000:65536"
+        create: yes
+      tags: [rootless-config]
+
+    - name: Configure subgid for rootless Docker
+      lineinfile:
+        path: /etc/subgid
+        line: "{{ gitea_user }}:100000:65536"
+        create: yes
+      tags: [rootless-config]
+
+    - name: Deploy docker-compose.yml
+      template:
+        src: templates/docker-compose.yml.j2
+        dest: "{{ gitea_base_dir }}/docker-compose.yml"
+        owner: "{{ gitea_user }}"
+        group: "{{ gitea_user }}"
+        mode: '0644'
+      tags: [compose]
+
+    - name: Deploy .env file
+      template:
+        src: templates/.env.j2
+        dest: "{{ gitea_base_dir }}/.env"
+        owner: "{{ gitea_user }}"
+        group: "{{ gitea_user }}"
+        mode: '0600'
+      tags: [compose]
+
+    - name: Deploy app.ini template for Gitea
+      template:
+        src: templates/app.ini.j2
+        dest: "{{ gitea_base_dir }}/gitea/app.ini"
+        owner: "{{ gitea_user }}"
+        group: "{{ gitea_user }}"
+        mode: '0644'
+      tags: [config]
+
+    - name: Start Gitea and PostgreSQL containers
+      become_user: "{{ gitea_user }}"
+      command: docker compose up -d
+      args:
+        chdir: "{{ gitea_base_dir }}"
+      environment:
+        DOCKER_HOST: unix:///run/user/1004/docker.sock
+      tags: [deploy]
+
+    - name: Wait for Gitea to be ready
+      uri:
+        url: "http://localhost:3000"
+        method: GET
+        status_code: [200, 302, 303]
+      register: gitea_health
+      retries: 30
+      delay: 5
+      until: gitea_health.status in [200, 302, 303]
+      ignore_errors: yes
+      tags: [verify]
+
+    - name: Print deployment status
+      debug:
+        msg: "Gitea deployed successfully! Access at http://{{ ansible_host }}:3000"
+      tags: [verify]

@@ -1,0 +1,68 @@
+APP_NAME = Gitea
+RUN_MODE = prod
+
+[repository]
+ROOT = /home/gitea/git/repositories
+
+[server]
+DOMAIN = {{ gitea_domain | default('localhost') }}
+HTTP_PORT = 3000
+ROOT_URL = http://{{ gitea_domain | default('localhost') }}:3000/
+DISABLE_SSH = false
+SSH_PORT = 2222
+SSH_LISTEN_PORT = 2222
+START_SSH_SERVER = true
+LFS_START_SERVER = true
+OFFLINE_MODE = false
+
+[database]
+DB_TYPE = postgres
+HOST = postgres:5432
+NAME = gitea
+USER = gitea
+PASSWD = {{ postgres_password | default('GiteaP@ssw0rd2024!') }}
+LOG_SQL = false
+SSL_MODE = disable
+
+[security]
+INSTALL_LOCK = true
+SECRET_KEY = {{ secret_key | default('') }}
+INTERNAL_TOKEN = {{ internal_token | default('') }}
+
+[service]
+DISABLE_REGISTRATION = false
+REQUIRE_SIGNIN_VIEW = false
+REGISTER_EMAIL_CONFIRM = false
+ENABLE_NOTIFY_MAIL = false
+ALLOW_ONLY_EXTERNAL_REGISTRATION = false
+DEFAULT_KEEP_EMAIL_PRIVATE = true
+DEFAULT_ALLOW_CREATE_ORGANIZATION = true
+ENABLE_TIMETRACKING = true
+NO_REPLY_ADDRESS = noreply.{{ gitea_domain | default('localhost') }}
+
+[mailer]
+ENABLED = false
+
+[openid]
+ENABLE_OPENID_SIGNIN = false
+ENABLE_OPENID_SIGNUP = false
+
+[picture]
+DISABLE_GRAVATAR = true
+ENABLE_FEDERATED_AVATAR = false
+
+[session]
+PROVIDER = file
+
+[cache]
+ADAPTER = memory
+
+[indexer]
+ISSUE_INDEXER_PATH = /home/gitea/indexers/issues.bleve
+REPO_INDEXER_PATH = /home/gitea/indexers/repos.bleve
+REPO_INDEXER_ENABLED = false
+
+[log]
+MODE = console
+LEVEL = info
+ROUTER = console
