@@ -1,0 +1,19 @@
+# Пример файла инвентаря для Ansible
+# Скопируйте этот файл в inventory.ini и отредактируйте под вашу инфраструктуру
+
+[gitea_servers]
+# Замените на IP или hostname вашего сервера
+192.168.1.100 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+# Или несколько серверов:
+# server1.example.com ansible_user=admin
+# server2.example.com ansible_user=admin
+
+[gitea_servers:vars]
+ansible_become=yes
+ansible_become_method=sudo
+
+# Если используете SSH ключ по умолчанию, можно убрать ansible_ssh_private_key_file
+# Если используете парольную аутентификацию, раскомментируйте:
+# ansible_password=your_password
+# ansible_become_password=your_sudo_password
